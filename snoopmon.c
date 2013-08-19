@@ -1,8 +1,5 @@
 /* 
- * File:   opencv_demo.c
- * Author: Tasanakorn
- *
- * Created on May 22, 2013, 1:52 PM
+ * File:   snoopmon.c
  */
 
 #include <stdio.h>
@@ -264,6 +261,7 @@ int setup_camera(PORT_USERDATA *userdata) {
             .use_stc_timestamp = MMAL_PARAM_TIMESTAMP_MODE_RESET_STC
         };
         mmal_port_parameter_set(camera->control, &cam_config.hdr);
+        mmal_port_parameter_set_int32(camera->control, MMAL_PARAMETER_EXPOSURE_COMP , MMAL_PARAM_EXPOSUREMODE_SPORTS);
     }
 
     // Setup camera preview port format 
