@@ -4,6 +4,12 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <errno.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/ipc.h>
+#include <sys/msg.h>
 
 #include <opencv2/core/core_c.h>
 #include <opencv2/objdetect/objdetect.hpp>
@@ -22,7 +28,7 @@
 
 #define VIDEO_WIDTH 960
 #define VIDEO_HEIGHT 540
-#define VIDEO_FPS 4 
+#define VIDEO_FPS 3 
 
 #define MMAL_CAMERA_PREVIEW_PORT 0
 #define MMAL_CAMERA_VIDEO_PORT 1
@@ -63,6 +69,11 @@ typedef struct {
     FILE* fptr;
 } PORT_USERDATA;
 
+struct my_msgbuf {
+    long mtype;
+    char mtext[80];
+};
+
 
 /**
  *  buffer header callback function for video
@@ -70,11 +81,11 @@ typedef struct {
  * @param port Pointer to port from which callback originated
  * @param buffer mmal buffer header pointer
  */
-#define MOTION_CLEAR_SOAK 3
+#define MOTION_CLEAR_SOAK 1
 
-int g_DiffThreshold = 20;
+int g_DiffThreshold = 25;
 int g_NoiseWindow = 3; // must be odd
-int g_PixelThreshold = 3000; // Total number of pixels changed
+int g_PixelThreshold = 3500; // Total number of pixels changed
 
 static int compareImages(PORT_USERDATA* userdata)
 {
@@ -261,7 +272,7 @@ int setup_camera(PORT_USERDATA *userdata) {
             .use_stc_timestamp = MMAL_PARAM_TIMESTAMP_MODE_RESET_STC
         };
         mmal_port_parameter_set(camera->control, &cam_config.hdr);
-        mmal_port_parameter_set_int32(camera->control, MMAL_PARAMETER_EXPOSURE_COMP , MMAL_PARAM_EXPOSUREMODE_SPORTS);
+        // mmal_port_parameter_set_int32(camera->control, MMAL_PARAMETER_EXPOSURE_COMP , MMAL_PARAM_EXPOSUREMODE_SPORTS);
     }
 
     // Setup camera preview port format 
@@ -489,16 +500,63 @@ int fill_port_buffer(MMAL_PORT_T *port, MMAL_POOL_T *pool) {
         }
     }
 }
+static void setFilename(char* filename) {
+    static int fileIdx = 0;
+    static time_t lastTime = 0;
 
+    time_t curTime = time(NULL);
+    if (lastTime == curTime) {
+        fileIdx++;
+    } else {
+        fileIdx = 0;
+    }
+    sprintf(filename, "/tmp/%d_%d.jpg", curTime, fileIdx);
+    lastTime = curTime;
+}
+
+static void postToQueue(int msqid, char* filename) {
+    struct my_msgbuf buf;
+    strcpy(buf.mtext, filename);
+    buf.mtype = 1;  // sourced from me
+    int len = strlen(buf.mtext);
+
+    if (msgsnd(msqid, &buf, len, 0) == -1) 
+        perror("msgsnd");
+    //
+    // Look for something sent to me
+    // 
+    if (msgrcv(msqid, &buf, sizeof(buf.mtext), 2, IPC_NOWAIT) < 0) {
+        switch(errno) {
+            case ENOMSG:
+                // Cool
+                break;
+            default:
+                perror("msgrcv");
+                exit(1);
+        }
+
+    } else {
+        printf("Client Received: \"%s\"\n", buf.mtext);
+        if (strncmp(buf.mtext, "EXIT", 4) == 0) 
+            exit(0);
+    }
+}
 
 int main(int argc, char** argv) {
     MMAL_STATUS_T status;
     PORT_USERDATA userdata;
     int display_width, display_height;
+    int msqid;
+    key_t key = 500;
 
     printf("Running...\n");
 
     bcm_host_init();
+
+    if ((msqid = msgget(key, 0644 | IPC_CREAT)) == -1) {
+        perror("msgget");
+        exit(1);
+    }
 
     cvNamedWindow("camcvWin", CV_WINDOW_AUTOSIZE);
 
@@ -510,7 +568,7 @@ int main(int argc, char** argv) {
     userdata.opencv_height = VIDEO_HEIGHT / 2;
 
     userdata.encoding = MMAL_ENCODING_JPEG;
-    userdata.quality = 85;
+    userdata.quality = 75;
 
     graphics_get_display_size(0, &display_width, &display_height);
 
@@ -563,10 +621,16 @@ int main(int argc, char** argv) {
     int  pixCount = 0;
     int  fileIdx = 0;
     char filename[80];
-    sprintf(filename, "/tmp/image_%05d.jpg", fileIdx++);
+    int  skipFrames = 20;
+    int  motionSoak = 0;
+    setFilename(filename);
     userdata.fptr = fopen(filename, "wb");
     while (1) {
         if (vcos_semaphore_wait(&(userdata.complete_semaphore)) == VCOS_SUCCESS) {
+            if (skipFrames) { // Skip the first few frames to let camera warm up
+                skipFrames--;
+                continue;
+            }
             opencv_frames++;
             float fps = 0.0;
             if (1) {
@@ -584,6 +648,7 @@ int main(int argc, char** argv) {
 
             graphics_resource_fill(img_overlay2, 0, 0, GRAPHICS_RESOURCE_WIDTH, GRAPHICS_RESOURCE_HEIGHT, GRAPHICS_RGBA32(0, 0, 0, 0x00));
             if (1) {
+                motionFlag = 0;
                 userdata.image1->imageData = userdata.videoBuffer;  // Hack to avoid memcpy, just copy Y, not UV
                 cvResize(userdata.image1, userdata.image2, CV_INTER_LINEAR);
                 if (firstFrame) {
@@ -600,7 +665,12 @@ int main(int argc, char** argv) {
                 }
             }
             if (motionFlag) {
-                sprintf(text, "Video = %.2f FPS, Snoop = %.2f FPS MOTION (%d)", userdata.video_fps, fps, fileIdx);
+                motionSoak = MOTION_CLEAR_SOAK;
+            } else {
+                motionSoak--;
+            }
+            if (motionSoak>0) {
+                sprintf(text, "Video = %.2f FPS, Snoop = %.2f FPS MOTION (%d)", userdata.video_fps, fps, fileIdx++);
                 MMAL_BUFFER_HEADER_T *output_buffer = 0;
                 output_buffer = mmal_queue_get(userdata.encoder_input_pool->queue);
                 memcpy(output_buffer->data, userdata.videoBuffer, userdata.videoBufferLen);
@@ -610,7 +680,8 @@ int main(int argc, char** argv) {
                 }
                 else {
                     if (vcos_semaphore_wait(&(userdata.filewrite_semaphore)) == VCOS_SUCCESS) {
-                        sprintf(filename, "/tmp/image_%05d.jpg", fileIdx++);
+                        postToQueue(msqid, filename);
+                        setFilename(filename);
                         userdata.fptr = fopen(filename, "wb");
                     }  else {
                         printf("Error on semaphore wait!\n");
@@ -631,7 +702,6 @@ int main(int argc, char** argv) {
 
         }
     }
-
     return 0;
 }
 
