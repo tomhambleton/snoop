@@ -65,15 +65,22 @@ class WebThread(threading.Thread):
                 try:
                     r = requests.post(url, files=files, auth=HTTPBasicAuth('hambtw', 'Snoop123'), timeout=180)
                 except:
-                    printf "Unexpected request error:", sys.exc_info()[0]
+                    print "Unexpected request error:", sys.exc_info()[0]
                 else:
                     print r.status_code
                     #print r.headers
                     print r.text
-                print "Removing: " + tempfilepath
-                os.remove(tempfilepath)
+                    print "Removing: " + tempfilepath
+                    try:
+                        os.remove(tempfilepath)
+                    except:
+                        print "Unexpected os.remove error:", sys.exc_info()[0]
+
         print "Removing: " + filepath
-        os.remove(filepath)
+        try:
+            os.remove(filepath)
+        except:
+            print "Unexpected os.remove error:", sys.exc_info()[0]
        
     def ping(self):
         """ Ping the web server of this unit
@@ -83,7 +90,7 @@ class WebThread(threading.Thread):
         try:
             r = requests.get(url, auth=HTTPBasicAuth('hambtw', 'Snoop123'))
         except:
-            printf "Unexpected request error:", sys.exc_info()[0]
+            print "Unexpected request error:", sys.exc_info()[0]
         else:
             print r.status_code
             #print r.headers

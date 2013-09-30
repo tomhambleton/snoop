@@ -448,7 +448,7 @@ int setup_encoder(PORT_USERDATA *userdata) {
         encoder_input_port->buffer_size = encoder_input_port->buffer_size_min;
     }
     */
-    encoder_input_port->buffer_num = 3;
+    encoder_input_port->buffer_num = 4;
     /*
     if (encoder_input_port->buffer_num < encoder_input_port->buffer_num_min) {
         encoder_input_port->buffer_num = encoder_input_port->buffer_num_min;
