@@ -18,7 +18,7 @@ include_directories(/opt/vc/src/hello_pi/libs/vgfont)
 link_directories(/opt/vc/lib)
 link_directories(/opt/vc/src/hello_pi/libs/vgfont)
 
-add_executable(snoopmon snoopmon.c)
+add_executable(snoopmon RaspiCamControl.c snoopmon.c)
 
 find_package( OpenCV REQUIRED )
 

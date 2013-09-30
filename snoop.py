@@ -21,7 +21,6 @@ class WebThread(threading.Thread):
         self.output_q = output_q
         self.unit_id = unit_id
         self.host = host
-        self.curr_event_time = 0
 
     def run(self):
         while 1:
@@ -38,36 +37,57 @@ class WebThread(threading.Thread):
                 print "Unknown cmd:" , cmd
         print "WebThread exiting"
 
-    def upload(self, filename):
+    def upload(self, filepath):
         """ Upload specified file to web server
         """
-        pieces = filename.split("/")
-        dest_filename = pieces[2]
-        pieces = dest_filename.split("_")
+        """Assume /tmp/<filename>.h264"
+        """
+        pieces = filepath.split("/")
+        basedir = pieces[1]
+        filename = pieces[2]
+        pieces = filename.split(".")
         file_time = pieces[0]
-        curr_time = int(file_time)
-        if ((self.curr_event_time == 0) or ((curr_time - self.curr_event_time) > 30)):
-            self.curr_event_time = curr_time
-       
-        url = "http://"+self.host+"/snoop/events/upload/"+self.unit_id+"/"+str(self.curr_event_time)
-        print url
-        files = {'file': (dest_filename, open(filename, 'rb'))}
-        r = requests.post(url, files=files, auth=HTTPBasicAuth('hambtw', 'Snoop123'))
-        print r.status_code
-        #print r.headers
-        print r.text
-        print "Removing: " + filename
-        os.remove(filename)
+        tempfilename = file_time + ".mp4"
+        event_time = int(file_time)
+        tempfilepath = "/"+ basedir + "/"+ tempfilename
+        args = ["/usr/bin/MP4Box", "-fps", "30", "-add", filepath, tempfilepath]
+        try:
+            retCode = subprocess.call(args);
+        except:
+	        print "MP4Box failed:" + retCode
+        else:
+            if (retCode != 0):
+                print "Call to MP4Box failed: ", retCode
+            else:
+                url = "http://"+self.host+"/snoop/events/upload/"+self.unit_id+"/"+file_time
+                print url
+                files = {'file': (tempfilename, open(tempfilepath, 'rb'))}
+                try:
+                    r = requests.post(url, files=files, auth=HTTPBasicAuth('hambtw', 'Snoop123'), timeout=180)
+                except:
+                    printf "Unexpected request error:", sys.exc_info()[0]
+                else:
+                    print r.status_code
+                    #print r.headers
+                    print r.text
+                print "Removing: " + tempfilepath
+                os.remove(tempfilepath)
+        print "Removing: " + filepath
+        os.remove(filepath)
        
     def ping(self):
         """ Ping the web server of this unit
         """
         url = "http://"+self.host+"/snoop/unitping/"+self.unit_id
         print url
-        r = requests.get(url, auth=HTTPBasicAuth('hambtw', 'Snoop123'))
-        print r.status_code
-        #print r.headers
-        print r.text
+        try:
+            r = requests.get(url, auth=HTTPBasicAuth('hambtw', 'Snoop123'))
+        except:
+            printf "Unexpected request error:", sys.exc_info()[0]
+        else:
+            print r.status_code
+            #print r.headers
+            print r.text
 
 class MsgQueueThread(threading.Thread):
     """ A worker thread that reads the SYSV message queue
@@ -91,7 +111,7 @@ class MsgQueueThread(threading.Thread):
 def main(args):
     # Create a single input and a single output queue for all threads.
     unit_id = "1"
-    host = "snoop-wileycoyote.rhcloud.com"
+    host = "snoop-env-hjrmvk5eey.elasticbeanstalk.com"
     # Create Thread Queues
     web_q = Queue.Queue()
     my_q = Queue.Queue()
