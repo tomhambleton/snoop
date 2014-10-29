@@ -37,8 +37,8 @@
 #define VIDEO_FPS 30 
 
 #define BITRATE 1500000
-#define CAPTURE_LENGTH 8  // Seconds
-#define SUSPEND_LENGTH 25  // Seconds
+#define CAPTURE_LENGTH 15  // Seconds
+#define SUSPEND_LENGTH 10  // Seconds
 #define MOTION_PERIOD (VIDEO_FPS/3)  // Times per second
 
 #define CAPTURE_FRAME_COUNT (VIDEO_FPS*CAPTURE_LENGTH) 

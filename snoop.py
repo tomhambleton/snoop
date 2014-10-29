@@ -118,7 +118,8 @@ class MsgQueueThread(threading.Thread):
 def main(args):
     # Create a single input and a single output queue for all threads.
     unit_id = "1"
-    host = "snoop-env-hjrmvk5eey.elasticbeanstalk.com"
+    #host = "snoop-env-hjrmvk5eey.elasticbeanstalk.com"
+    host = "192.168.1.50"
     # Create Thread Queues
     web_q = Queue.Queue()
     my_q = Queue.Queue()

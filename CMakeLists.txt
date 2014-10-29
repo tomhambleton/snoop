@@ -22,4 +22,4 @@ add_executable(snoopmon RaspiCamControl.c snoopmon.c)
 
 find_package( OpenCV REQUIRED )
 
-target_link_libraries(snoopmon mmal_core mmal_util mmal_vc_client vcos bcm_host ${OpenCV_LIBS} vgfont openmaxil EGL)
+target_link_libraries(snoopmon mmal_core mmal_util mmal_vc_client vcos pthread bcm_host ${OpenCV_LIBS} vgfont openmaxil EGL)
